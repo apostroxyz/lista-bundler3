@@ -47,23 +47,8 @@ Contains the following actions:
 - ERC20 transfers.
 - Native token (e.g. WETH) transfers, wrap & unwrap.
 - ERC4626 mint, deposit, withdraw & redeem.
-- Morpho interactions.
+- Moolah interactions.
 - TransferFrom using Permit2.
-
-### [`ERC20WrapperAdapter`](./src/adapters/ERC20WrapperAdapter.sol)
-
-Contains the following actions:
-
-- ERC20 wrap & unwrap.
-
-### [`EthereumGeneralAdapter1`](./src/adapters/EthereumGeneralAdapter1.sol)
-
-Contains the following actions:
-
-- Actions of `GeneralAdapter1`.
-- Morpho token wrapper deposit and withdrawal.
-- stETH staking.
-- wstETH wrap & unwrap.
 
 ### [`ParaswapAdapter`](./src/adapters/ParaswapAdapter.sol)
 
@@ -71,44 +56,12 @@ Contains the following actions, all using the paraswap aggregator:
 
 - Sell a given amount or the balance.
 - Buy a given amount.
-- Buy a what's needed to fully repay on a given Morpho Market.
-
-### Migration adapters
-
-For [Aave V2](./src/adapters/migration/AaveV2MigrationAdapter.sol), [Aave V3](./src/adapters/migration/AaveV3MigrationAdapter.sol), [Compound V2](./src/adapters/migration/CompoundV2MigrationAdapter.sol), [Compound V3](./src/adapters/migration/CompoundV3MigrationAdapter.sol), and [Morpho Aave V3 Optimizer](./src/adapters/migration/AaveV3OptimizerMigrationAdapter.sol).
-
-## Differences with [Bundler v2](https://github.com/morpho-org/morpho-blue-bundlers)
-
-- Make use of transient storage.
-- Bundler3 is now a call dispatcher that does not require any approval.
-  Because call-dispatch and approvals are now separated, it is possible to add adapters over time without additional risk to users of existing adapters.
-- All generic features are now in `GeneralAdapter1`, instead of being in separate files that are then all inherited by a single contract.
-- All Ethereum related features are in the `EthereumAdapter1` which inherits from `GeneralAdapter1`.
-- The `1` after `Adapter` is not a version number: when new features are development we will deploy additional adapters, for instance `GeneralAdapter2`.
-  Existing adapters will still be used.
-- Many adjustments such as:
-  - A value `amount` is only taken to be the current balance (when it makes sense) if equal to `uint.max`
-  - Slippage checks are done with a price argument instead of a limit amount.
-  - When `shares` represents a supply or borrow position, `shares == uint.max` sets `shares` to the position's total value.
-  - There are receiver arguments in all functions that give tokens to the adapter so the adapter can pass along those tokens.
-  - ERC20 unwrap always transfers to and from the initiator before unwrapping.
-    This prevents unwrapping by non-whitelisted initiators.
-- The [call fields](#bundle-call-fields) `skipRevert` (to skip failed actions) and `callbackHash` (to commit to callback contents) are new.
-
+- Buy a what's needed to fully repay on a given Moolah Market.
 
 ## Development
 
-Run tests with `forge test --chain <chainid>` (chainid can be 1 or 8453, 1 by default).
-
-## Audits
-
-All audits are stored in the [audits](./audits/) folder.
+Run tests with `forge test --chain <chainid>` (chainid can be 56, 56 by default).
 
 ## License
 
 Source files are licensed under `GPL-2.0-or-later`, see [`LICENSE`](./LICENSE).
-
-## Links
-
-- [Deployments](https://docs.morpho.org/addresses/#bundlers)
-- SDK: TBA.

@@ -3,16 +3,14 @@ pragma solidity 0.8.28;
 
 import {IWNative} from "../interfaces/IWNative.sol";
 import {IERC4626} from "../../lib/openzeppelin-contracts/contracts/interfaces/IERC4626.sol";
-import {MarketParams, IMorpho} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+import {MarketParams, IMoolah} from "../../lib/moolah/src/moolah/interfaces/IMoolah.sol";
 import {CoreAdapter, ErrorsLib, IERC20, SafeERC20, Address} from "./CoreAdapter.sol";
 import {MathRayLib} from "../libraries/MathRayLib.sol";
 import {SafeCast160} from "../../lib/permit2/src/libraries/SafeCast160.sol";
 import {Permit2Lib} from "../../lib/permit2/src/libraries/Permit2Lib.sol";
-import {MorphoBalancesLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
-import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
-import {MorphoLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
+import {MoolahBalancesLib} from "../../lib/moolah/src/moolah/libraries/periphery/MoolahBalancesLib.sol";
+import {MarketParamsLib} from "../../lib/moolah/src/moolah/libraries/MarketParamsLib.sol";
 
-/// @custom:security-contact security@morpho.org
 /// @notice Chain agnostic adapter contract n°1.
 contract GeneralAdapter1 is CoreAdapter {
     using SafeCast160 for uint256;
@@ -21,8 +19,8 @@ contract GeneralAdapter1 is CoreAdapter {
 
     /* IMMUTABLES */
 
-    /// @notice The address of the Morpho contract.
-    IMorpho public immutable MORPHO;
+    /// @notice The address of the Moolah contract.
+    IMoolah public immutable MOOLAH;
 
     /// @dev The address of the wrapped native token.
     IWNative public immutable WRAPPED_NATIVE;
@@ -30,13 +28,13 @@ contract GeneralAdapter1 is CoreAdapter {
     /* CONSTRUCTOR */
 
     /// @param bundler3 The address of the Bundler3 contract.
-    /// @param morpho The address of the Morpho protocol.
+    /// @param moolah The address of the Moolah protocol.
     /// @param wNative The address of the canonical native token wrapper.
-    constructor(address bundler3, address morpho, address wNative) CoreAdapter(bundler3) {
-        require(morpho != address(0), ErrorsLib.ZeroAddress());
+    constructor(address bundler3, address moolah, address wNative) CoreAdapter(bundler3) {
+        require(moolah != address(0), ErrorsLib.ZeroAddress());
         require(wNative != address(0), ErrorsLib.ZeroAddress());
 
-        MORPHO = IMorpho(morpho);
+        MOOLAH = IMoolah(moolah);
         WRAPPED_NATIVE = IWNative(wNative);
     }
 
@@ -138,46 +136,46 @@ contract GeneralAdapter1 is CoreAdapter {
         require(assets.rDivDown(shares) >= minSharePriceE27, ErrorsLib.SlippageExceeded());
     }
 
-    /* MORPHO CALLBACKS */
+    /* MOOLAH CALLBACKS */
 
-    /// @notice Receives supply callback from the Morpho contract.
+    /// @notice Receives supply callback from the Moolah contract.
     /// @param data Bytes containing an abi-encoded Call[].
-    function onMorphoSupply(uint256, bytes calldata data) external {
-        morphoCallback(data);
+    function onMoolahSupply(uint256, bytes calldata data) external {
+        moolahCallback(data);
     }
 
-    /// @notice Receives supply collateral callback from the Morpho contract.
+    /// @notice Receives supply collateral callback from the Moolah contract.
     /// @param data Bytes containing an abi-encoded Call[].
-    function onMorphoSupplyCollateral(uint256, bytes calldata data) external {
-        morphoCallback(data);
+    function onMoolahSupplyCollateral(uint256, bytes calldata data) external {
+        moolahCallback(data);
     }
 
-    /// @notice Receives repay callback from the Morpho contract.
+    /// @notice Receives repay callback from the Moolah contract.
     /// @param data Bytes containing an abi-encoded Call[].
-    function onMorphoRepay(uint256, bytes calldata data) external {
-        morphoCallback(data);
+    function onMoolahRepay(uint256, bytes calldata data) external {
+        moolahCallback(data);
     }
 
-    /// @notice Receives flashloan callback from the Morpho contract.
+    /// @notice Receives flashloan callback from the Moolah contract.
     /// @param data Bytes containing an abi-encoded Call[].
-    function onMorphoFlashLoan(uint256, bytes calldata data) external {
-        morphoCallback(data);
+    function onMoolahFlashLoan(uint256, bytes calldata data) external {
+        moolahCallback(data);
     }
 
-    /* MORPHO ACTIONS */
+    /* MOOLAH ACTIONS */
 
-    /// @notice Supplies loan asset on Morpho.
+    /// @notice Supplies loan asset on Moolah.
     /// @dev Either `assets` or `shares` should be zero. Most usecases should rely on `assets` as an input so the
     /// adapter is guaranteed to have `assets` tokens pulled from its balance, but the possibility to mint a specific
     /// amount of shares is given for full compatibility and precision.
     /// @dev Loan tokens must have been previously sent to the adapter.
-    /// @param marketParams The Morpho market to supply assets to.
+    /// @param marketParams The Moolah market to supply assets to.
     /// @param assets The amount of assets to supply. Pass `type(uint).max` to supply the adapter's loan asset balance.
     /// @param shares The amount of shares to mint.
     /// @param maxSharePriceE27 The maximum amount of assets supplied per minted share, scaled by 1e27.
     /// @param onBehalf The address that will own the increased supply position.
-    /// @param data Arbitrary data to pass to the `onMorphoSupply` callback. Pass empty data if not needed.
-    function morphoSupply(
+    /// @param data Arbitrary data to pass to the `onMoolahSupply` callback. Pass empty data if not needed.
+    function moolahSupply(
         MarketParams calldata marketParams,
         uint256 assets,
         uint256 shares,
@@ -185,7 +183,7 @@ contract GeneralAdapter1 is CoreAdapter {
         address onBehalf,
         bytes calldata data
     ) external onlyBundler3 {
-        // Do not check `onBehalf` against the zero address as it's done in Morpho.
+        // Do not check `onBehalf` against the zero address as it's done in Moolah.
         require(onBehalf != address(this), ErrorsLib.AdapterAddress());
 
         if (assets == type(uint256).max) {
@@ -193,51 +191,51 @@ contract GeneralAdapter1 is CoreAdapter {
             require(assets != 0, ErrorsLib.ZeroAmount());
         }
 
-        // Morpho's allowance is not reset as it is trusted.
-        SafeERC20.forceApprove(IERC20(marketParams.loanToken), address(MORPHO), type(uint256).max);
+        // Moolah's allowance is not reset as it is trusted.
+        SafeERC20.forceApprove(IERC20(marketParams.loanToken), address(MOOLAH), type(uint256).max);
 
-        (uint256 suppliedAssets, uint256 suppliedShares) = MORPHO.supply(marketParams, assets, shares, onBehalf, data);
+        (uint256 suppliedAssets, uint256 suppliedShares) = MOOLAH.supply(marketParams, assets, shares, onBehalf, data);
 
         require(suppliedAssets.rDivUp(suppliedShares) <= maxSharePriceE27, ErrorsLib.SlippageExceeded());
     }
 
-    /// @notice Supplies collateral on Morpho.
+    /// @notice Supplies collateral on Moolah.
     /// @dev Collateral tokens must have been previously sent to the adapter.
-    /// @param marketParams The Morpho market to supply collateral to.
+    /// @param marketParams The Moolah market to supply collateral to.
     /// @param assets The amount of collateral to supply. Pass `type(uint).max` to supply the adapter's collateral
     /// balance.
     /// @param onBehalf The address that will own the increased collateral position.
-    /// @param data Arbitrary data to pass to the `onMorphoSupplyCollateral` callback. Pass empty data if not needed.
-    function morphoSupplyCollateral(
+    /// @param data Arbitrary data to pass to the `onMoolahSupplyCollateral` callback. Pass empty data if not needed.
+    function moolahSupplyCollateral(
         MarketParams calldata marketParams,
         uint256 assets,
         address onBehalf,
         bytes calldata data
     ) external onlyBundler3 {
-        // Do not check `onBehalf` against the zero address as it's done at Morpho's level.
+        // Do not check `onBehalf` against the zero address as it's done at Moolah's level.
         require(onBehalf != address(this), ErrorsLib.AdapterAddress());
 
         if (assets == type(uint256).max) assets = IERC20(marketParams.collateralToken).balanceOf(address(this));
 
         require(assets != 0, ErrorsLib.ZeroAmount());
 
-        // Morpho's allowance is not reset as it is trusted.
-        SafeERC20.forceApprove(IERC20(marketParams.collateralToken), address(MORPHO), type(uint256).max);
+        // Moolah's allowance is not reset as it is trusted.
+        SafeERC20.forceApprove(IERC20(marketParams.collateralToken), address(MOOLAH), type(uint256).max);
 
-        MORPHO.supplyCollateral(marketParams, assets, onBehalf, data);
+        MOOLAH.supplyCollateral(marketParams, assets, onBehalf, data);
     }
 
-    /// @notice Borrows assets on Morpho.
+    /// @notice Borrows assets on Moolah.
     /// @dev Either `assets` or `shares` should be zero. Most usecases should rely on `assets` as an input so the
     /// initiator is guaranteed to borrow `assets` tokens, but the possibility to mint a specific amount of shares is
     /// given for full compatibility and precision.
-    /// @dev Initiator must have previously authorized the adapter to act on their behalf on Morpho.
-    /// @param marketParams The Morpho market to borrow assets from.
+    /// @dev Initiator must have previously authorized the adapter to act on their behalf on Moolah.
+    /// @param marketParams The Moolah market to borrow assets from.
     /// @param assets The amount of assets to borrow.
     /// @param shares The amount of shares to mint.
     /// @param minSharePriceE27 The minimum amount of assets borrowed per borrow share minted, scaled by 1e27.
     /// @param receiver The address that will receive the borrowed assets.
-    function morphoBorrow(
+    function moolahBorrow(
         MarketParams calldata marketParams,
         uint256 assets,
         uint256 shares,
@@ -245,23 +243,23 @@ contract GeneralAdapter1 is CoreAdapter {
         address receiver
     ) external onlyBundler3 {
         (uint256 borrowedAssets, uint256 borrowedShares) =
-            MORPHO.borrow(marketParams, assets, shares, initiator(), receiver);
+            MOOLAH.borrow(marketParams, assets, shares, initiator(), receiver);
 
         require(borrowedAssets.rDivDown(borrowedShares) >= minSharePriceE27, ErrorsLib.SlippageExceeded());
     }
 
-    /// @notice Repays assets on Morpho.
+    /// @notice Repays assets on Moolah.
     /// @dev Either `assets` or `shares` should be zero. Most usecases should rely on `assets` as an input so the
     /// adapter is guaranteed to have `assets` tokens pulled from its balance, but the possibility to burn a specific
     /// amount of shares is given for full compatibility and precision.
     /// @dev Loan tokens must have been previously sent to the adapter.
-    /// @param marketParams The Morpho market to repay assets to.
+    /// @param marketParams The Moolah market to repay assets to.
     /// @param assets The amount of assets to repay. Pass `type(uint).max` to repay the adapter's loan asset balance.
     /// @param shares The amount of shares to burn. Pass `type(uint).max` to repay the initiator's entire debt.
     /// @param maxSharePriceE27 The maximum amount of assets repaid per borrow share burned, scaled by 1e27.
     /// @param onBehalf The address of the owner of the debt position.
-    /// @param data Arbitrary data to pass to the `onMorphoRepay` callback. Pass empty data if not needed.
-    function morphoRepay(
+    /// @param data Arbitrary data to pass to the `onMoolahRepay` callback. Pass empty data if not needed.
+    function moolahRepay(
         MarketParams calldata marketParams,
         uint256 assets,
         uint256 shares,
@@ -269,7 +267,7 @@ contract GeneralAdapter1 is CoreAdapter {
         address onBehalf,
         bytes calldata data
     ) external onlyBundler3 {
-        // Do not check `onBehalf` against the zero address as it's done at Morpho's level.
+        // Do not check `onBehalf` against the zero address as it's done at Moolah's level.
         require(onBehalf != address(this), ErrorsLib.AdapterAddress());
 
         if (assets == type(uint256).max) {
@@ -278,29 +276,29 @@ contract GeneralAdapter1 is CoreAdapter {
         }
 
         if (shares == type(uint256).max) {
-            shares = MorphoLib.borrowShares(MORPHO, marketParams.id(), onBehalf);
+            shares = MOOLAH.position(marketParams.id(), onBehalf).borrowShares;
             require(shares != 0, ErrorsLib.ZeroAmount());
         }
 
-        // Morpho's allowance is not reset as it is trusted.
-        SafeERC20.forceApprove(IERC20(marketParams.loanToken), address(MORPHO), type(uint256).max);
+        // Moolah's allowance is not reset as it is trusted.
+        SafeERC20.forceApprove(IERC20(marketParams.loanToken), address(MOOLAH), type(uint256).max);
 
-        (uint256 repaidAssets, uint256 repaidShares) = MORPHO.repay(marketParams, assets, shares, onBehalf, data);
+        (uint256 repaidAssets, uint256 repaidShares) = MOOLAH.repay(marketParams, assets, shares, onBehalf, data);
 
         require(repaidAssets.rDivUp(repaidShares) <= maxSharePriceE27, ErrorsLib.SlippageExceeded());
     }
 
-    /// @notice Withdraws assets on Morpho.
+    /// @notice Withdraws assets on Moolah.
     /// @dev Either `assets` or `shares` should be zero. Most usecases should rely on `assets` as an input so the
     /// initiator is guaranteed to withdraw `assets` tokens, but the possibility to burn a specific amount of shares is
     /// given for full compatibility and precision.
-    /// @dev Initiator must have previously authorized the maodule to act on their behalf on Morpho.
-    /// @param marketParams The Morpho market to withdraw assets from.
+    /// @dev Initiator must have previously authorized the maodule to act on their behalf on Moolah.
+    /// @param marketParams The Moolah market to withdraw assets from.
     /// @param assets The amount of assets to withdraw.
     /// @param shares The amount of shares to burn. Pass `type(uint).max` to burn all the initiator's supply shares.
     /// @param minSharePriceE27 The minimum amount of assets withdraw per burn share, scaled by 1e27.
     /// @param receiver The address that will receive the withdrawn assets.
-    function morphoWithdraw(
+    function moolahWithdraw(
         MarketParams calldata marketParams,
         uint256 assets,
         uint256 shares,
@@ -308,42 +306,42 @@ contract GeneralAdapter1 is CoreAdapter {
         address receiver
     ) external onlyBundler3 {
         if (shares == type(uint256).max) {
-            shares = MorphoLib.supplyShares(MORPHO, marketParams.id(), initiator());
+            shares = MOOLAH.position(marketParams.id(), initiator()).supplyShares;
             require(shares != 0, ErrorsLib.ZeroAmount());
         }
 
         (uint256 withdrawnAssets, uint256 withdrawnShares) =
-            MORPHO.withdraw(marketParams, assets, shares, initiator(), receiver);
+            MOOLAH.withdraw(marketParams, assets, shares, initiator(), receiver);
 
         require(withdrawnAssets.rDivDown(withdrawnShares) >= minSharePriceE27, ErrorsLib.SlippageExceeded());
     }
 
-    /// @notice Withdraws collateral from Morpho.
-    /// @dev Initiator must have previously authorized the adapter to act on their behalf on Morpho.
-    /// @param marketParams The Morpho market to withdraw collateral from.
+    /// @notice Withdraws collateral from Moolah.
+    /// @dev Initiator must have previously authorized the adapter to act on their behalf on Moolah.
+    /// @param marketParams The Moolah market to withdraw collateral from.
     /// @param assets The amount of collateral to withdraw. Pass `type(uint).max` to withdraw the initiator's collateral
     /// balance.
     /// @param receiver The address that will receive the collateral assets.
-    function morphoWithdrawCollateral(MarketParams calldata marketParams, uint256 assets, address receiver)
+    function moolahWithdrawCollateral(MarketParams calldata marketParams, uint256 assets, address receiver)
         external
         onlyBundler3
     {
-        if (assets == type(uint256).max) assets = MorphoLib.collateral(MORPHO, marketParams.id(), initiator());
+        if (assets == type(uint256).max) assets = MOOLAH.position(marketParams.id(), initiator()).collateral;
         require(assets != 0, ErrorsLib.ZeroAmount());
 
-        MORPHO.withdrawCollateral(marketParams, assets, initiator(), receiver);
+        MOOLAH.withdrawCollateral(marketParams, assets, initiator(), receiver);
     }
 
-    /// @notice Triggers a flash loan on Morpho.
+    /// @notice Triggers a flash loan on Moolah.
     /// @param token The address of the token to flash loan.
     /// @param assets The amount of assets to flash loan.
-    /// @param data Arbitrary data to pass to the `onMorphoFlashLoan` callback.
-    function morphoFlashLoan(address token, uint256 assets, bytes calldata data) external onlyBundler3 {
+    /// @param data Arbitrary data to pass to the `onMoolahFlashLoan` callback.
+    function moolahFlashLoan(address token, uint256 assets, bytes calldata data) external onlyBundler3 {
         require(assets != 0, ErrorsLib.ZeroAmount());
-        // Morpho's allowance is not reset as it is trusted.
-        SafeERC20.forceApprove(IERC20(token), address(MORPHO), type(uint256).max);
+        // Moolah's allowance is not reset as it is trusted.
+        SafeERC20.forceApprove(IERC20(token), address(MOOLAH), type(uint256).max);
 
-        MORPHO.flashLoan(token, assets, data);
+        MOOLAH.flashLoan(token, assets, data);
     }
 
     /* PERMIT2 ACTIONS */
@@ -413,9 +411,9 @@ contract GeneralAdapter1 is CoreAdapter {
     /* INTERNAL FUNCTIONS */
 
     /// @dev Triggers `_multicall` logic during a callback.
-    function morphoCallback(bytes calldata data) internal {
-        require(msg.sender == address(MORPHO), ErrorsLib.UnauthorizedSender());
-        // No need to approve Morpho to pull tokens because it should already be approved max.
+    function moolahCallback(bytes calldata data) internal {
+        require(msg.sender == address(MOOLAH), ErrorsLib.UnauthorizedSender());
+        // No need to approve Moolah to pull tokens because it should already be approved max.
 
         reenterBundler3(data);
     }

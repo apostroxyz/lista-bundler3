@@ -3,16 +3,15 @@ pragma solidity ^0.8.0;
 
 import {SigUtils} from "./helpers/SigUtils.sol";
 import {ErrorsLib} from "../src/libraries/ErrorsLib.sol";
-import {ErrorsLib as MorphoErrorsLib} from "../lib/morpho-blue/src/libraries/ErrorsLib.sol";
-import {MarketParamsLib} from "../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
+import {ErrorsLib as MoolahErrorsLib} from "../lib/moolah/src/moolah/libraries/ErrorsLib.sol";
+import {MarketParamsLib} from "../lib/moolah/src/moolah/libraries/MarketParamsLib.sol";
 import {MathRayLib} from "../src/libraries/MathRayLib.sol";
 
 import "./helpers/LocalTest.sol";
 
-contract MorphoAdapterLocalTest is LocalTest {
+contract MoolahAdapterLocalTest is LocalTest {
     using MathLib for uint256;
-    using MorphoLib for IMorpho;
-    using MorphoBalancesLib for IMorpho;
+    using MoolahBalancesLib for IMoolah;
     using SharesMathLib for uint256;
     using MarketParamsLib for MarketParams;
     using MathRayLib for uint256;
@@ -21,8 +20,8 @@ contract MorphoAdapterLocalTest is LocalTest {
         super.setUp();
 
         vm.startPrank(USER);
-        loanToken.approve(address(morpho), type(uint256).max);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        loanToken.approve(address(moolah), type(uint256).max);
+        collateralToken.approve(address(moolah), type(uint256).max);
         loanToken.approve(address(generalAdapter1), type(uint256).max);
         collateralToken.approve(address(generalAdapter1), type(uint256).max);
         vm.stopPrank();
@@ -31,10 +30,10 @@ contract MorphoAdapterLocalTest is LocalTest {
         loanToken.approve(address(generalAdapter1), type(uint256).max);
     }
 
-    function approveERC20ToMorphoAndAdapter(address user) internal {
+    function approveERC20ToMoolahAndAdapter(address user) internal {
         vm.startPrank(user);
-        loanToken.approve(address(morpho), type(uint256).max);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        loanToken.approve(address(moolah), type(uint256).max);
+        collateralToken.approve(address(moolah), type(uint256).max);
         loanToken.approve(address(generalAdapter1), type(uint256).max);
         collateralToken.approve(address(generalAdapter1), type(uint256).max);
         vm.stopPrank();
@@ -42,7 +41,7 @@ contract MorphoAdapterLocalTest is LocalTest {
 
     function assumeOnBehalf(address onBehalf) internal view {
         vm.assume(onBehalf != address(0));
-        vm.assume(onBehalf != address(morpho));
+        vm.assume(onBehalf != address(moolah));
         vm.assume(onBehalf != address(generalAdapter1));
     }
 
@@ -52,12 +51,12 @@ contract MorphoAdapterLocalTest is LocalTest {
         user = vm.addr(privateKey);
         deadline = uint32(bound(deadline, block.timestamp + 1, type(uint32).max));
 
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, true));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, true));
 
         bundler3.multicall(bundle);
 
-        assertTrue(morpho.isAuthorized(user, address(generalAdapter1)), "isAuthorized(user, generalAdapter1)");
+        assertTrue(moolah.isAuthorized(user, address(generalAdapter1)), "isAuthorized(user, generalAdapter1)");
     }
 
     function testSetAuthorizationWithSigRevert(uint256 privateKey, uint32 deadline) public {
@@ -66,17 +65,17 @@ contract MorphoAdapterLocalTest is LocalTest {
         user = vm.addr(privateKey);
         deadline = uint32(bound(deadline, block.timestamp + 1, type(uint32).max));
 
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
 
-        vm.expectRevert(bytes(MorphoErrorsLib.INVALID_NONCE));
+        vm.expectRevert(bytes(MoolahErrorsLib.INVALID_NONCE));
         bundler3.multicall(bundle);
     }
 
     function testSupplyOnBehalfAdapterAddress(uint256 assets) public {
         assets = bound(assets, MIN_AMOUNT, MAX_AMOUNT);
 
-        bundle.push(_morphoSupply(marketParams, assets, 0, type(uint256).max, address(generalAdapter1), hex""));
+        bundle.push(_moolahSupply(marketParams, assets, 0, type(uint256).max, address(generalAdapter1), hex""));
 
         vm.expectRevert(ErrorsLib.AdapterAddress.selector);
         bundler3.multicall(bundle);
@@ -85,7 +84,7 @@ contract MorphoAdapterLocalTest is LocalTest {
     function testSupplyCollateralOnBehalfAdapterAddress(uint256 assets) public {
         assets = bound(assets, MIN_AMOUNT, MAX_AMOUNT);
 
-        bundle.push(_morphoSupplyCollateral(marketParams, assets, address(generalAdapter1), hex""));
+        bundle.push(_moolahSupplyCollateral(marketParams, assets, address(generalAdapter1), hex""));
 
         vm.expectRevert(ErrorsLib.AdapterAddress.selector);
         bundler3.multicall(bundle);
@@ -94,7 +93,7 @@ contract MorphoAdapterLocalTest is LocalTest {
     function testRepayOnBehalfAdapterAddress(uint256 assets) public {
         assets = bound(assets, MIN_AMOUNT, MAX_AMOUNT);
 
-        bundle.push(_morphoRepay(marketParams, assets, 0, type(uint256).max, address(generalAdapter1), hex""));
+        bundle.push(_moolahRepay(marketParams, assets, 0, type(uint256).max, address(generalAdapter1), hex""));
 
         vm.expectRevert(ErrorsLib.AdapterAddress.selector);
         bundler3.multicall(bundle);
@@ -107,20 +106,22 @@ contract MorphoAdapterLocalTest is LocalTest {
         assertEq(collateralToken.balanceOf(onBehalf), 0, "collateral.balanceOf(onBehalf)");
         assertEq(loanToken.balanceOf(onBehalf), 0, "loan.balanceOf(onBehalf)");
 
-        assertEq(morpho.collateral(id, onBehalf), 0, "collateral(onBehalf)");
-        assertEq(morpho.supplyShares(id, onBehalf), amount * SharesMathLib.VIRTUAL_SHARES, "supplyShares(onBehalf)");
-        assertEq(morpho.borrowShares(id, onBehalf), 0, "borrowShares(onBehalf)");
+        assertEq(moolah.position(id, onBehalf).collateral, 0, "collateral(onBehalf)");
+        assertEq(
+            moolah.position(id, onBehalf).supplyShares, amount * SharesMathLib.VIRTUAL_SHARES, "supplyShares(onBehalf)"
+        );
+        assertEq(moolah.position(id, onBehalf).borrowShares, 0, "borrowShares(onBehalf)");
 
         if (onBehalf != USER) {
-            assertEq(morpho.collateral(id, USER), 0, "collateral(USER)");
-            assertEq(morpho.supplyShares(id, USER), 0, "supplyShares(USER)");
-            assertEq(morpho.borrowShares(id, USER), 0, "borrowShares(USER)");
+            assertEq(moolah.position(id, USER).collateral, 0, "collateral(USER)");
+            assertEq(moolah.position(id, USER).supplyShares, 0, "supplyShares(USER)");
+            assertEq(moolah.position(id, USER).borrowShares, 0, "borrowShares(USER)");
         }
 
         assertEq(
-            loanToken.allowance(address(generalAdapter1), address(morpho)),
+            loanToken.allowance(address(generalAdapter1), address(moolah)),
             type(uint256).max,
-            "loanToken.allowance(generalAdapter1, morpho)"
+            "loanToken.allowance(generalAdapter1, moolah)"
         );
     }
 
@@ -130,7 +131,7 @@ contract MorphoAdapterLocalTest is LocalTest {
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         bundle.push(_erc20TransferFrom(address(loanToken), amount));
-        bundle.push(_morphoSupply(marketParams, amount, 0, type(uint256).max, onBehalf, hex""));
+        bundle.push(_moolahSupply(marketParams, amount, 0, type(uint256).max, onBehalf, hex""));
 
         deal(address(loanToken), USER, amount);
 
@@ -146,14 +147,14 @@ contract MorphoAdapterLocalTest is LocalTest {
         shares = bound(shares, MIN_AMOUNT, MAX_AMOUNT);
 
         bundle.push(_erc20TransferFrom(address(loanToken), type(uint128).max));
-        bundle.push(_morphoSupply(marketParams, 0, shares, type(uint256).max, onBehalf, hex""));
+        bundle.push(_moolahSupply(marketParams, 0, shares, type(uint256).max, onBehalf, hex""));
 
         deal(address(loanToken), USER, type(uint128).max);
 
         vm.prank(USER);
         bundler3.multicall(bundle);
 
-        assertEq(morpho.supplyShares(id, onBehalf), shares);
+        assertEq(moolah.position(id, onBehalf).supplyShares, shares);
     }
 
     function testSupplyMax(uint256 amount, address onBehalf) public {
@@ -162,7 +163,7 @@ contract MorphoAdapterLocalTest is LocalTest {
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         bundle.push(_erc20TransferFrom(address(loanToken), amount));
-        bundle.push(_morphoSupply(marketParams, type(uint256).max, 0, type(uint256).max, onBehalf, hex""));
+        bundle.push(_moolahSupply(marketParams, type(uint256).max, 0, type(uint256).max, onBehalf, hex""));
 
         deal(address(loanToken), USER, amount);
 
@@ -179,7 +180,7 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         callbackBundle.push(_erc20TransferFrom(address(loanToken), amount));
 
-        bundle.push(_morphoSupply(marketParams, amount, 0, type(uint256).max, onBehalf, abi.encode(callbackBundle)));
+        bundle.push(_moolahSupply(marketParams, amount, 0, type(uint256).max, onBehalf, abi.encode(callbackBundle)));
 
         deal(address(loanToken), USER, amount);
 
@@ -196,14 +197,14 @@ contract MorphoAdapterLocalTest is LocalTest {
         assertEq(collateralToken.balanceOf(onBehalf), 0, "collateral.balanceOf(onBehalf)");
         assertEq(loanToken.balanceOf(onBehalf), 0, "loan.balanceOf(onBehalf)");
 
-        assertEq(morpho.collateral(id, onBehalf), amount, "collateral(onBehalf)");
-        assertEq(morpho.supplyShares(id, onBehalf), 0, "supplyShares(onBehalf)");
-        assertEq(morpho.borrowShares(id, onBehalf), 0, "borrowShares(onBehalf)");
+        assertEq(moolah.position(id, onBehalf).collateral, amount, "collateral(onBehalf)");
+        assertEq(moolah.position(id, onBehalf).supplyShares, 0, "supplyShares(onBehalf)");
+        assertEq(moolah.position(id, onBehalf).borrowShares, 0, "borrowShares(onBehalf)");
 
         if (onBehalf != USER) {
-            assertEq(morpho.collateral(id, USER), 0, "collateral(USER)");
-            assertEq(morpho.supplyShares(id, USER), 0, "supplyShares(USER)");
-            assertEq(morpho.borrowShares(id, USER), 0, "borrowShares(USER)");
+            assertEq(moolah.position(id, USER).collateral, 0, "collateral(USER)");
+            assertEq(moolah.position(id, USER).supplyShares, 0, "supplyShares(USER)");
+            assertEq(moolah.position(id, USER).borrowShares, 0, "borrowShares(USER)");
         }
     }
 
@@ -213,7 +214,7 @@ contract MorphoAdapterLocalTest is LocalTest {
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         bundle.push(_erc20TransferFrom(address(collateralToken), amount));
-        bundle.push(_morphoSupplyCollateral(marketParams, amount, onBehalf, hex""));
+        bundle.push(_moolahSupplyCollateral(marketParams, amount, onBehalf, hex""));
 
         deal(address(collateralToken), USER, amount);
 
@@ -229,7 +230,7 @@ contract MorphoAdapterLocalTest is LocalTest {
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         bundle.push(_erc20TransferFrom(address(collateralToken), amount));
-        bundle.push(_morphoSupplyCollateral(marketParams, type(uint256).max, onBehalf, hex""));
+        bundle.push(_moolahSupplyCollateral(marketParams, type(uint256).max, onBehalf, hex""));
 
         deal(address(collateralToken), USER, amount);
 
@@ -241,27 +242,27 @@ contract MorphoAdapterLocalTest is LocalTest {
 
     function testWithdrawUnauthorized(uint256 withdrawnShares) public {
         vm.expectRevert(ErrorsLib.UnauthorizedSender.selector);
-        generalAdapter1.morphoWithdraw(marketParams, 0, withdrawnShares, 0, RECEIVER);
+        generalAdapter1.moolahWithdraw(marketParams, 0, withdrawnShares, 0, RECEIVER);
     }
 
     function testWithdraw(uint256 privateKey, uint256 amount, uint256 withdrawnShares) public {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(user);
 
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
         uint256 expectedSupplyShares = amount.toSharesDown(0, 0);
         withdrawnShares = bound(withdrawnShares, 1, expectedSupplyShares);
         uint256 expectedWithdrawnAmount = withdrawnShares.toAssetsDown(amount, expectedSupplyShares);
 
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        bundle.push(_morphoWithdraw(marketParams, 0, withdrawnShares, 0, user));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahWithdraw(marketParams, 0, withdrawnShares, 0, user));
 
         deal(address(loanToken), user, amount);
 
         vm.startPrank(user);
-        morpho.supply(marketParams, amount, 0, user, hex"");
+        moolah.supply(marketParams, amount, 0, user, hex"");
 
         bundler3.multicall(bundle);
         vm.stopPrank();
@@ -269,59 +270,59 @@ contract MorphoAdapterLocalTest is LocalTest {
         assertEq(loanToken.balanceOf(user), expectedWithdrawnAmount, "loan.balanceOf(user)");
         assertEq(loanToken.balanceOf(address(generalAdapter1)), 0, "loan.balanceOf(address(generalAdapter1)");
         assertEq(
-            loanToken.balanceOf(address(morpho)), amount - expectedWithdrawnAmount, "loan.balanceOf(address(morpho))"
+            loanToken.balanceOf(address(moolah)), amount - expectedWithdrawnAmount, "loan.balanceOf(address(moolah))"
         );
 
-        assertEq(morpho.collateral(id, user), 0, "collateral(user)");
-        assertEq(morpho.supplyShares(id, user), expectedSupplyShares - withdrawnShares, "supplyShares(user)");
-        assertEq(morpho.borrowShares(id, user), 0, "borrowShares(user)");
+        assertEq(moolah.position(id, user).collateral, 0, "collateral(user)");
+        assertEq(moolah.position(id, user).supplyShares, expectedSupplyShares - withdrawnShares, "supplyShares(user)");
+        assertEq(moolah.position(id, user).borrowShares, 0, "borrowShares(user)");
     }
 
-    function testMorphoSupplyMaxAssetsZero() public {
-        bundle.push(_morphoSupply(marketParams, type(uint256).max, 0, type(uint256).max, address(this), hex""));
+    function testMoolahSupplyMaxAssetsZero() public {
+        bundle.push(_moolahSupply(marketParams, type(uint256).max, 0, type(uint256).max, address(this), hex""));
 
         vm.expectRevert(ErrorsLib.ZeroAmount.selector);
         bundler3.multicall(bundle);
     }
 
-    function testMorphoSupplyCollateralMaxZero() public {
-        bundle.push(_morphoSupplyCollateral(marketParams, type(uint256).max, address(this), hex""));
+    function testMoolahSupplyCollateralMaxZero() public {
+        bundle.push(_moolahSupplyCollateral(marketParams, type(uint256).max, address(this), hex""));
 
         vm.expectRevert(ErrorsLib.ZeroAmount.selector);
         bundler3.multicall(bundle);
     }
 
-    function testMorphoSupplyCollateralZero(uint256 amount) public {
+    function testMoolahSupplyCollateralZero(uint256 amount) public {
         deal(address(collateralToken), address(generalAdapter1), amount);
-        bundle.push(_morphoSupplyCollateral(marketParams, 0, address(this), hex""));
+        bundle.push(_moolahSupplyCollateral(marketParams, 0, address(this), hex""));
 
         vm.expectRevert(ErrorsLib.ZeroAmount.selector);
         bundler3.multicall(bundle);
     }
 
-    function testMorphoRepayMaxAssetsZero() public {
-        bundle.push(_morphoRepay(marketParams, type(uint256).max, 0, type(uint256).max, address(this), hex""));
+    function testMoolahRepayMaxAssetsZero() public {
+        bundle.push(_moolahRepay(marketParams, type(uint256).max, 0, type(uint256).max, address(this), hex""));
 
         vm.expectRevert(ErrorsLib.ZeroAmount.selector);
         bundler3.multicall(bundle);
     }
 
-    function testMorphoRepayMaxSharesZero() public {
-        bundle.push(_morphoRepay(marketParams, 0, type(uint256).max, type(uint256).max, address(this), hex""));
+    function testMoolahRepayMaxSharesZero() public {
+        bundle.push(_moolahRepay(marketParams, 0, type(uint256).max, type(uint256).max, address(this), hex""));
 
         vm.expectRevert(ErrorsLib.ZeroAmount.selector);
         bundler3.multicall(bundle);
     }
 
     function testWithdrawZeroMaxSupply() public {
-        bundle.push(_morphoWithdraw(marketParams, 0, type(uint256).max, 0, RECEIVER));
+        bundle.push(_moolahWithdraw(marketParams, 0, type(uint256).max, 0, RECEIVER));
 
         vm.expectRevert(ErrorsLib.ZeroAmount.selector);
         bundler3.multicall(bundle);
     }
 
     function testWithdrawCollateralZero() public {
-        bundle.push(_morphoWithdrawCollateral(marketParams, 0, RECEIVER));
+        bundle.push(_moolahWithdrawCollateral(marketParams, 0, RECEIVER));
 
         vm.expectRevert(ErrorsLib.ZeroAmount.selector);
         bundler3.multicall(bundle);
@@ -331,47 +332,47 @@ contract MorphoAdapterLocalTest is LocalTest {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(user);
 
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        bundle.push(_morphoWithdraw(marketParams, 0, type(uint256).max, 0, user));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahWithdraw(marketParams, 0, type(uint256).max, 0, user));
 
         deal(address(loanToken), user, amount);
 
         vm.startPrank(user);
-        morpho.supply(marketParams, amount, 0, user, hex"");
+        moolah.supply(marketParams, amount, 0, user, hex"");
 
         bundler3.multicall(bundle);
         vm.stopPrank();
 
         assertEq(loanToken.balanceOf(user), amount, "loan.balanceOf(user)");
         assertEq(loanToken.balanceOf(address(generalAdapter1)), 0, "loan.balanceOf(address(generalAdapter1)");
-        assertEq(loanToken.balanceOf(address(morpho)), 0, "loan.balanceOf(address(morpho))");
+        assertEq(loanToken.balanceOf(address(moolah)), 0, "loan.balanceOf(address(moolah))");
 
-        assertEq(morpho.collateral(id, user), 0, "collateral(user)");
-        assertEq(morpho.supplyShares(id, user), 0, "supplyShares(user)");
-        assertEq(morpho.borrowShares(id, user), 0, "borrowShares(user)");
+        assertEq(moolah.position(id, user).collateral, 0, "collateral(user)");
+        assertEq(moolah.position(id, user).supplyShares, 0, "supplyShares(user)");
+        assertEq(moolah.position(id, user).borrowShares, 0, "borrowShares(user)");
     }
 
     function testBorrowUnauthorized(uint256 borrowedAssets) public {
         vm.expectRevert(ErrorsLib.UnauthorizedSender.selector);
-        generalAdapter1.morphoBorrow(marketParams, borrowedAssets, 0, 0, RECEIVER);
+        generalAdapter1.moolahBorrow(marketParams, borrowedAssets, 0, 0, RECEIVER);
     }
 
     function _testSupplyCollateralBorrow(address user, uint256 amount, uint256 collateralAmount) internal view {
         assertEq(collateralToken.balanceOf(RECEIVER), 0, "collateral.balanceOf(RECEIVER)");
         assertEq(loanToken.balanceOf(RECEIVER), amount, "loan.balanceOf(RECEIVER)");
 
-        assertEq(morpho.collateral(id, user), collateralAmount, "collateral(user)");
-        assertEq(morpho.supplyShares(id, user), 0, "supplyShares(user)");
-        assertEq(morpho.borrowShares(id, user), amount * SharesMathLib.VIRTUAL_SHARES, "borrowShares(user)");
+        assertEq(moolah.position(id, user).collateral, collateralAmount, "collateral(user)");
+        assertEq(moolah.position(id, user).supplyShares, 0, "supplyShares(user)");
+        assertEq(moolah.position(id, user).borrowShares, amount * SharesMathLib.VIRTUAL_SHARES, "borrowShares(user)");
 
         if (RECEIVER != user) {
-            assertEq(morpho.collateral(id, RECEIVER), 0, "collateral(RECEIVER)");
-            assertEq(morpho.supplyShares(id, RECEIVER), 0, "supplyShares(RECEIVER)");
-            assertEq(morpho.borrowShares(id, RECEIVER), 0, "borrowShares(RECEIVER)");
+            assertEq(moolah.position(id, RECEIVER).collateral, 0, "collateral(RECEIVER)");
+            assertEq(moolah.position(id, RECEIVER).supplyShares, 0, "supplyShares(RECEIVER)");
+            assertEq(moolah.position(id, RECEIVER).borrowShares, 0, "borrowShares(RECEIVER)");
 
             assertEq(collateralToken.balanceOf(user), 0, "collateral.balanceOf(user)");
             assertEq(loanToken.balanceOf(user), 0, "loan.balanceOf(user)");
@@ -382,19 +383,19 @@ contract MorphoAdapterLocalTest is LocalTest {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(user);
 
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         deal(address(loanToken), address(this), amount);
-        morpho.supply(marketParams, amount, 0, SUPPLIER, hex"");
+        moolah.supply(marketParams, amount, 0, SUPPLIER, hex"");
 
         uint256 collateralAmount = amount.wDivUp(LLTV);
 
         bundle.push(_erc20TransferFrom(address(collateralToken), collateralAmount));
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        bundle.push(_morphoSupplyCollateral(marketParams, collateralAmount, user, hex""));
-        bundle.push(_morphoBorrow(marketParams, amount, 0, 0, RECEIVER));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahSupplyCollateral(marketParams, collateralAmount, user, hex""));
+        bundle.push(_moolahBorrow(marketParams, amount, 0, 0, RECEIVER));
 
         deal(address(collateralToken), user, collateralAmount);
 
@@ -408,20 +409,20 @@ contract MorphoAdapterLocalTest is LocalTest {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(user);
 
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         deal(address(loanToken), address(this), amount);
-        morpho.supply(marketParams, amount, 0, SUPPLIER, hex"");
+        moolah.supply(marketParams, amount, 0, SUPPLIER, hex"");
 
         uint256 collateralAmount = amount.wDivUp(LLTV);
 
-        callbackBundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        callbackBundle.push(_morphoBorrow(marketParams, amount, 0, 0, RECEIVER));
+        callbackBundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        callbackBundle.push(_moolahBorrow(marketParams, amount, 0, 0, RECEIVER));
         callbackBundle.push(_erc20TransferFrom(address(collateralToken), collateralAmount));
 
-        bundle.push(_morphoSupplyCollateral(marketParams, collateralAmount, user, abi.encode(callbackBundle)));
+        bundle.push(_moolahSupplyCollateral(marketParams, collateralAmount, user, abi.encode(callbackBundle)));
 
         deal(address(collateralToken), user, collateralAmount);
 
@@ -433,21 +434,21 @@ contract MorphoAdapterLocalTest is LocalTest {
 
     function testWithdrawCollateralUnauthorized(uint256 collateralAmount) public {
         vm.expectRevert(ErrorsLib.UnauthorizedSender.selector);
-        generalAdapter1.morphoWithdrawCollateral(marketParams, collateralAmount, RECEIVER);
+        generalAdapter1.moolahWithdrawCollateral(marketParams, collateralAmount, RECEIVER);
     }
 
     function _testRepayWithdrawCollateral(address user, uint256 collateralAmount) internal view {
         assertEq(collateralToken.balanceOf(RECEIVER), collateralAmount, "collateral.balanceOf(RECEIVER)");
         assertEq(loanToken.balanceOf(RECEIVER), 0, "loan.balanceOf(RECEIVER)");
 
-        assertEq(morpho.collateral(id, user), 0, "collateral(user)");
-        assertEq(morpho.supplyShares(id, user), 0, "supplyShares(user)");
-        assertEq(morpho.borrowShares(id, user), 0, "borrowShares(user)");
+        assertEq(moolah.position(id, user).collateral, 0, "collateral(user)");
+        assertEq(moolah.position(id, user).supplyShares, 0, "supplyShares(user)");
+        assertEq(moolah.position(id, user).borrowShares, 0, "borrowShares(user)");
 
         if (RECEIVER != user) {
-            assertEq(morpho.collateral(id, RECEIVER), 0, "collateral(RECEIVER)");
-            assertEq(morpho.supplyShares(id, RECEIVER), 0, "supplyShares(RECEIVER)");
-            assertEq(morpho.borrowShares(id, RECEIVER), 0, "borrowShares(RECEIVER)");
+            assertEq(moolah.position(id, RECEIVER).collateral, 0, "collateral(RECEIVER)");
+            assertEq(moolah.position(id, RECEIVER).supplyShares, 0, "supplyShares(RECEIVER)");
+            assertEq(moolah.position(id, RECEIVER).borrowShares, 0, "borrowShares(RECEIVER)");
 
             assertEq(collateralToken.balanceOf(user), 0, "collateral.balanceOf(user)");
             assertEq(loanToken.balanceOf(user), 0, "loan.balanceOf(user)");
@@ -458,25 +459,25 @@ contract MorphoAdapterLocalTest is LocalTest {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(user);
 
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         deal(address(loanToken), address(this), amount);
-        morpho.supply(marketParams, amount, 0, SUPPLIER, hex"");
+        moolah.supply(marketParams, amount, 0, SUPPLIER, hex"");
 
         uint256 collateralAmount = amount.wDivUp(LLTV);
 
         deal(address(collateralToken), user, collateralAmount);
         vm.startPrank(user);
-        morpho.supplyCollateral(marketParams, collateralAmount, user, hex"");
-        morpho.borrow(marketParams, amount, 0, user, user);
+        moolah.supplyCollateral(marketParams, collateralAmount, user, hex"");
+        moolah.borrow(marketParams, amount, 0, user, user);
         vm.stopPrank();
 
         bundle.push(_erc20TransferFrom(address(loanToken), amount));
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        bundle.push(_morphoRepay(marketParams, amount, 0, type(uint256).max, user, hex""));
-        bundle.push(_morphoWithdrawCollateral(marketParams, collateralAmount, RECEIVER));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahRepay(marketParams, amount, 0, type(uint256).max, user, hex""));
+        bundle.push(_moolahWithdrawCollateral(marketParams, collateralAmount, RECEIVER));
 
         vm.prank(user);
         bundler3.multicall(bundle);
@@ -488,25 +489,25 @@ contract MorphoAdapterLocalTest is LocalTest {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(user);
 
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         deal(address(loanToken), address(this), amount);
-        morpho.supply(marketParams, amount, 0, SUPPLIER, hex"");
+        moolah.supply(marketParams, amount, 0, SUPPLIER, hex"");
 
         uint256 collateralAmount = amount.wDivUp(LLTV);
 
         deal(address(collateralToken), user, collateralAmount);
         vm.startPrank(user);
-        morpho.supplyCollateral(marketParams, collateralAmount, user, hex"");
-        morpho.borrow(marketParams, amount, 0, user, user);
+        moolah.supplyCollateral(marketParams, collateralAmount, user, hex"");
+        moolah.borrow(marketParams, amount, 0, user, user);
         vm.stopPrank();
 
         bundle.push(_erc20TransferFrom(address(loanToken), amount));
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        bundle.push(_morphoRepay(marketParams, type(uint256).max, 0, type(uint256).max, user, hex""));
-        bundle.push(_morphoWithdrawCollateral(marketParams, collateralAmount, RECEIVER));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahRepay(marketParams, type(uint256).max, 0, type(uint256).max, user, hex""));
+        bundle.push(_moolahWithdrawCollateral(marketParams, collateralAmount, RECEIVER));
 
         vm.prank(user);
         bundler3.multicall(bundle);
@@ -518,16 +519,16 @@ contract MorphoAdapterLocalTest is LocalTest {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(user);
 
         collateralAmount = bound(collateralAmount, MIN_AMOUNT, MAX_AMOUNT);
 
         deal(address(collateralToken), user, collateralAmount);
         vm.prank(user);
-        morpho.supplyCollateral(marketParams, collateralAmount, user, hex"");
+        moolah.supplyCollateral(marketParams, collateralAmount, user, hex"");
 
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        bundle.push(_morphoWithdrawCollateral(marketParams, type(uint256).max, RECEIVER));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahWithdrawCollateral(marketParams, type(uint256).max, RECEIVER));
 
         vm.prank(user);
         bundler3.multicall(bundle);
@@ -539,26 +540,26 @@ contract MorphoAdapterLocalTest is LocalTest {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(user);
 
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         deal(address(loanToken), address(this), amount);
-        morpho.supply(marketParams, amount, 0, SUPPLIER, hex"");
+        moolah.supply(marketParams, amount, 0, SUPPLIER, hex"");
 
         uint256 collateralAmount = amount.wDivUp(LLTV);
 
         deal(address(collateralToken), user, collateralAmount);
         vm.startPrank(user);
-        morpho.supplyCollateral(marketParams, collateralAmount, user, hex"");
-        morpho.borrow(marketParams, amount, 0, user, user);
+        moolah.supplyCollateral(marketParams, collateralAmount, user, hex"");
+        moolah.borrow(marketParams, amount, 0, user, user);
         vm.stopPrank();
 
-        callbackBundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
-        callbackBundle.push(_morphoWithdrawCollateral(marketParams, collateralAmount, RECEIVER));
+        callbackBundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
+        callbackBundle.push(_moolahWithdrawCollateral(marketParams, collateralAmount, RECEIVER));
         callbackBundle.push(_erc20TransferFrom(address(loanToken), amount));
 
-        bundle.push(_morphoRepay(marketParams, amount, 0, type(uint256).max, user, abi.encode(callbackBundle)));
+        bundle.push(_moolahRepay(marketParams, amount, 0, type(uint256).max, user, abi.encode(callbackBundle)));
 
         vm.prank(user);
         bundler3.multicall(bundle);
@@ -572,33 +573,33 @@ contract MorphoAdapterLocalTest is LocalTest {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
-        approveERC20ToMorphoAndAdapter(onBehalf);
+        approveERC20ToMoolahAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(onBehalf);
 
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
 
         deal(address(loanToken), address(this), amount);
-        morpho.supply(marketParams, amount, 0, SUPPLIER, hex"");
+        moolah.supply(marketParams, amount, 0, SUPPLIER, hex"");
 
         uint256 collateralAmount = amount.wDivUp(LLTV);
 
         deal(address(collateralToken), onBehalf, collateralAmount);
         vm.startPrank(onBehalf);
-        morpho.supplyCollateral(marketParams, collateralAmount, onBehalf, hex"");
-        morpho.borrow(marketParams, amount, 0, onBehalf, address(generalAdapter1));
+        moolah.supplyCollateral(marketParams, collateralAmount, onBehalf, hex"");
+        moolah.borrow(marketParams, amount, 0, onBehalf, address(generalAdapter1));
         vm.stopPrank();
 
-        bundle.push(_morphoRepay(marketParams, 0, type(uint256).max, type(uint256).max, onBehalf, hex""));
+        bundle.push(_moolahRepay(marketParams, 0, type(uint256).max, type(uint256).max, onBehalf, hex""));
 
-        assertGt(MorphoLib.borrowShares(morpho, marketParams.id(), onBehalf), 0, "before: borrowShares(onBehalf)");
+        assertGt(moolah.position(marketParams.id(), onBehalf).borrowShares, 0, "before: borrowShares(onBehalf)");
 
         vm.prank(user);
         bundler3.multicall(bundle);
 
         assertEq(loanToken.balanceOf(user), 0, "after: loan.balanceOf(user)");
-        assertEq(MorphoLib.borrowShares(morpho, marketParams.id(), onBehalf), 0, "after: borrowShares(onBehalf)");
+        assertEq(moolah.position(marketParams.id(), onBehalf).borrowShares, 0, "after: borrowShares(onBehalf)");
         assertEq(loanToken.balanceOf(address(generalAdapter1)), 0, "loan.balanceOf(address(generalAdapter1)");
-        assertEq(loanToken.balanceOf(address(morpho)), amount, "loan.balanceOf(address(morpho))");
+        assertEq(loanToken.balanceOf(address(moolah)), amount, "loan.balanceOf(address(moolah))");
     }
 
     struct BundleTransactionsVars {
@@ -617,9 +618,9 @@ contract MorphoAdapterLocalTest is LocalTest {
         address user;
         privateKey = _boundPrivateKey(privateKey);
         user = vm.addr(privateKey);
-        approveERC20ToMorphoAndAdapter(user);
+        approveERC20ToMoolahAndAdapter(user);
 
-        bundle.push(_morphoSetAuthorizationWithSig(privateKey, true, 0, false));
+        bundle.push(_moolahSetAuthorizationWithSig(privateKey, true, 0, false));
 
         seedAction = bound(seedAction, 0, type(uint256).max - 30);
         seedAmount = bound(seedAmount, 0, type(uint256).max - 30);
@@ -643,22 +644,22 @@ contract MorphoAdapterLocalTest is LocalTest {
         vm.prank(user);
         bundler3.multicall(bundle);
 
-        assertEq(morpho.supplyShares(id, user), vars.expectedSupplyShares, "User's supply shares");
-        assertEq(morpho.borrowShares(id, user), vars.expectedBorrowShares, "User's borrow shares");
-        assertEq(morpho.totalSupplyShares(id), vars.expectedSupplyShares, "Total supply shares");
-        assertEq(morpho.totalBorrowShares(id), vars.expectedBorrowShares, "Total borrow shares");
-        assertEq(morpho.totalSupplyAssets(id), vars.expectedTotalSupply, "Total supply");
-        assertEq(morpho.totalBorrowAssets(id), vars.expectedTotalBorrow, "Total borrow");
-        assertEq(morpho.collateral(id, user), vars.expectedCollateral, "User's collateral");
+        assertEq(moolah.position(id, user).supplyShares, vars.expectedSupplyShares, "User's supply shares");
+        assertEq(moolah.position(id, user).borrowShares, vars.expectedBorrowShares, "User's borrow shares");
+        assertEq(moolah.market(id).totalSupplyShares, vars.expectedSupplyShares, "Total supply shares");
+        assertEq(moolah.market(id).totalBorrowShares, vars.expectedBorrowShares, "Total borrow shares");
+        assertEq(moolah.market(id).totalSupplyAssets, vars.expectedTotalSupply, "Total supply");
+        assertEq(moolah.market(id).totalBorrowAssets, vars.expectedTotalBorrow, "Total borrow");
+        assertEq(moolah.position(id, user).collateral, vars.expectedCollateral, "User's collateral");
 
         assertEq(loanToken.balanceOf(user), 0, "User's loan balance");
         assertEq(collateralToken.balanceOf(user), 0, "User's collateral balance");
         assertEq(
-            loanToken.balanceOf(address(morpho)),
+            loanToken.balanceOf(address(moolah)),
             vars.expectedTotalSupply - vars.expectedTotalBorrow,
             "User's loan balance"
         );
-        assertEq(collateralToken.balanceOf(address(morpho)), vars.expectedCollateral, "Morpho's collateral balance");
+        assertEq(collateralToken.balanceOf(address(moolah)), vars.expectedCollateral, "Moolah's collateral balance");
         assertEq(
             loanToken.balanceOf(address(generalAdapter1)),
             vars.expectedAdapterLoanBalance,
@@ -676,7 +677,7 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         _transferMissingLoan(vars, amount);
 
-        bundle.push(_morphoSupply(marketParams, amount, 0, type(uint256).max, user, hex""));
+        bundle.push(_moolahSupply(marketParams, amount, 0, type(uint256).max, user, hex""));
         vars.expectedAdapterLoanBalance -= amount;
 
         uint256 expectedAddedSupplyShares = amount.toSharesDown(vars.expectedTotalSupply, vars.expectedSupplyShares);
@@ -689,7 +690,7 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         _transferMissingCollateral(vars, amount);
 
-        bundle.push(_morphoSupplyCollateral(marketParams, amount, user, hex""));
+        bundle.push(_moolahSupplyCollateral(marketParams, amount, user, hex""));
         vars.expectedAdapterCollateralBalance -= amount;
 
         vars.expectedCollateral += amount;
@@ -702,10 +703,10 @@ contract MorphoAdapterLocalTest is LocalTest {
         uint256 supplyBalance =
             vars.expectedSupplyShares.toAssetsDown(vars.expectedTotalSupply, vars.expectedSupplyShares);
 
-        uint256 maxAmount = MorphoUtilsLib.min(supplyBalance, availableLiquidity);
+        uint256 maxAmount = MoolahUtilsLib.min(supplyBalance, availableLiquidity);
         amount = bound(amount % maxAmount, 1, maxAmount);
 
-        bundle.push(_morphoWithdraw(marketParams, amount, 0, 0, address(generalAdapter1)));
+        bundle.push(_moolahWithdraw(marketParams, amount, 0, 0, address(generalAdapter1)));
         vars.expectedAdapterLoanBalance += amount;
 
         uint256 expectedDecreasedSupplyShares = amount.toSharesUp(vars.expectedTotalSupply, vars.expectedSupplyShares);
@@ -724,13 +725,13 @@ contract MorphoAdapterLocalTest is LocalTest {
         uint256 currentBorrowPower = totalBorrowPower - borrowed;
         if (currentBorrowPower == 0) return;
 
-        uint256 maxShares = MorphoUtilsLib.min(currentBorrowPower, availableLiquidity).toSharesDown(
+        uint256 maxShares = MoolahUtilsLib.min(currentBorrowPower, availableLiquidity).toSharesDown(
             vars.expectedTotalBorrow, vars.expectedBorrowShares
         );
         if (maxShares < MIN_AMOUNT) return;
         shares = bound(shares % maxShares, MIN_AMOUNT, maxShares);
 
-        bundle.push(_morphoBorrow(marketParams, 0, shares, 0, address(generalAdapter1)));
+        bundle.push(_moolahBorrow(marketParams, 0, shares, 0, address(generalAdapter1)));
         uint256 expectedBorrowedAmount = shares.toAssetsDown(vars.expectedTotalBorrow, vars.expectedBorrowShares);
         vars.expectedAdapterLoanBalance += expectedBorrowedAmount;
 
@@ -748,7 +749,7 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         _transferMissingLoan(vars, amount);
 
-        bundle.push(_morphoRepay(marketParams, amount, 0, type(uint256).max, user, hex""));
+        bundle.push(_moolahRepay(marketParams, amount, 0, type(uint256).max, user, hex""));
         vars.expectedAdapterLoanBalance -= amount;
 
         uint256 expectedDecreasedBorrowShares = amount.toSharesDown(vars.expectedTotalBorrow, vars.expectedBorrowShares);
@@ -767,7 +768,7 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         amount = bound(amount % withdrawableCollateral, 1, withdrawableCollateral);
 
-        bundle.push(_morphoWithdrawCollateral(marketParams, amount, address(generalAdapter1)));
+        bundle.push(_moolahWithdrawCollateral(marketParams, amount, address(generalAdapter1)));
         vars.expectedAdapterCollateralBalance += amount;
 
         vars.expectedCollateral -= amount;
@@ -798,7 +799,7 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         deal(marketParams.loanToken, address(generalAdapter1), assets);
 
-        bundle.push(_morphoSupply(marketParams, assets, 0, sharePriceE27, address(this), hex""));
+        bundle.push(_moolahSupply(marketParams, assets, 0, sharePriceE27, address(this), hex""));
         bundler3.multicall(bundle);
     }
 
@@ -809,7 +810,7 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         deal(marketParams.loanToken, address(generalAdapter1), assets);
 
-        bundle.push(_morphoSupply(marketParams, assets, 0, sharePriceE27, address(this), hex""));
+        bundle.push(_moolahSupply(marketParams, assets, 0, sharePriceE27, address(this), hex""));
         vm.expectRevert(ErrorsLib.SlippageExceeded.selector);
         bundler3.multicall(bundle);
     }
@@ -820,10 +821,10 @@ contract MorphoAdapterLocalTest is LocalTest {
         sharePriceE27 = bound(sharePriceE27, 0, assets.rDivUp(shares));
 
         deal(marketParams.loanToken, address(this), assets);
-        morpho.supply(marketParams, assets, 0, address(this), hex"");
-        morpho.setAuthorization(address(generalAdapter1), true);
+        moolah.supply(marketParams, assets, 0, address(this), hex"");
+        moolah.setAuthorization(address(generalAdapter1), true);
 
-        bundle.push(_morphoWithdraw(marketParams, assets, 0, sharePriceE27, address(this)));
+        bundle.push(_moolahWithdraw(marketParams, assets, 0, sharePriceE27, address(this)));
         bundler3.multicall(bundle);
     }
 
@@ -833,10 +834,10 @@ contract MorphoAdapterLocalTest is LocalTest {
         sharePriceE27 = bound(sharePriceE27, assets.rDivDown(shares) + 1, type(uint256).max);
 
         deal(marketParams.loanToken, address(this), assets);
-        morpho.supply(marketParams, assets, 0, address(this), hex"");
-        morpho.setAuthorization(address(generalAdapter1), true);
+        moolah.supply(marketParams, assets, 0, address(this), hex"");
+        moolah.setAuthorization(address(generalAdapter1), true);
 
-        bundle.push(_morphoWithdraw(marketParams, assets, 0, sharePriceE27, address(this)));
+        bundle.push(_moolahWithdraw(marketParams, assets, 0, sharePriceE27, address(this)));
         vm.expectRevert(ErrorsLib.SlippageExceeded.selector);
         bundler3.multicall(bundle);
     }
@@ -849,11 +850,11 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         deal(marketParams.loanToken, address(this), assets);
         deal(marketParams.collateralToken, address(this), collateral);
-        morpho.supply(marketParams, assets, 0, address(this), hex"");
-        morpho.supplyCollateral(marketParams, collateral, address(this), hex"");
-        morpho.setAuthorization(address(generalAdapter1), true);
+        moolah.supply(marketParams, assets, 0, address(this), hex"");
+        moolah.supplyCollateral(marketParams, collateral, address(this), hex"");
+        moolah.setAuthorization(address(generalAdapter1), true);
 
-        bundle.push(_morphoBorrow(marketParams, assets, 0, sharePriceE27, address(this)));
+        bundle.push(_moolahBorrow(marketParams, assets, 0, sharePriceE27, address(this)));
         bundler3.multicall(bundle);
     }
 
@@ -865,12 +866,12 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         deal(marketParams.loanToken, address(this), assets);
         deal(marketParams.collateralToken, address(this), collateral);
-        morpho.supply(marketParams, assets, 0, address(this), hex"");
-        morpho.supplyCollateral(marketParams, collateral, address(this), hex"");
-        morpho.setAuthorization(address(generalAdapter1), true);
+        moolah.supply(marketParams, assets, 0, address(this), hex"");
+        moolah.supplyCollateral(marketParams, collateral, address(this), hex"");
+        moolah.setAuthorization(address(generalAdapter1), true);
 
         vm.expectRevert(ErrorsLib.SlippageExceeded.selector);
-        bundle.push(_morphoBorrow(marketParams, assets, 0, sharePriceE27, address(this)));
+        bundle.push(_moolahBorrow(marketParams, assets, 0, sharePriceE27, address(this)));
         bundler3.multicall(bundle);
     }
 
@@ -882,11 +883,11 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         deal(marketParams.loanToken, address(this), assets);
         deal(marketParams.collateralToken, address(this), collateral);
-        morpho.supply(marketParams, assets, 0, address(this), hex"");
-        morpho.supplyCollateral(marketParams, collateral, address(this), hex"");
-        morpho.borrow(marketParams, assets, 0, address(this), address(generalAdapter1));
+        moolah.supply(marketParams, assets, 0, address(this), hex"");
+        moolah.supplyCollateral(marketParams, collateral, address(this), hex"");
+        moolah.borrow(marketParams, assets, 0, address(this), address(generalAdapter1));
 
-        bundle.push(_morphoRepay(marketParams, assets, 0, sharePriceE27, address(this), hex""));
+        bundle.push(_moolahRepay(marketParams, assets, 0, sharePriceE27, address(this), hex""));
         bundler3.multicall(bundle);
     }
 
@@ -898,17 +899,17 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         deal(marketParams.loanToken, address(this), assets);
         deal(marketParams.collateralToken, address(this), collateral);
-        morpho.supply(marketParams, assets, 0, address(this), hex"");
-        morpho.supplyCollateral(marketParams, collateral, address(this), hex"");
-        morpho.borrow(marketParams, assets, 0, address(this), address(generalAdapter1));
+        moolah.supply(marketParams, assets, 0, address(this), hex"");
+        moolah.supplyCollateral(marketParams, collateral, address(this), hex"");
+        moolah.borrow(marketParams, assets, 0, address(this), address(generalAdapter1));
 
         vm.expectRevert(ErrorsLib.SlippageExceeded.selector);
-        bundle.push(_morphoRepay(marketParams, assets, 0, sharePriceE27, address(this), hex""));
+        bundle.push(_moolahRepay(marketParams, assets, 0, sharePriceE27, address(this), hex""));
         bundler3.multicall(bundle);
     }
 
     function testFlashLoanZero() public {
-        bundle.push(_morphoFlashLoan(address(0), 0, hex""));
+        bundle.push(_moolahFlashLoan(address(0), 0, hex""));
 
         vm.expectRevert(ErrorsLib.ZeroAmount.selector);
         bundler3.multicall(bundle);
@@ -919,18 +920,18 @@ contract MorphoAdapterLocalTest is LocalTest {
 
         deal(address(loanToken), address(this), amount);
 
-        morpho.supply(marketParams, amount, 0, SUPPLIER, hex"");
+        moolah.supply(marketParams, amount, 0, SUPPLIER, hex"");
 
         callbackBundle.push(_erc20Transfer(address(loanToken), USER, amount, generalAdapter1));
         callbackBundle.push(_erc20TransferFrom(address(loanToken), amount));
 
-        bundle.push(_morphoFlashLoan(address(loanToken), amount, abi.encode(callbackBundle)));
+        bundle.push(_moolahFlashLoan(address(loanToken), amount, abi.encode(callbackBundle)));
 
         vm.prank(USER);
         bundler3.multicall(bundle);
 
         assertEq(loanToken.balanceOf(USER), 0, "User's loan token balance");
         assertEq(loanToken.balanceOf(address(generalAdapter1)), 0, "Adapter's loan token balance");
-        assertEq(loanToken.balanceOf(address(morpho)), amount, "Morpho's loan token balance");
+        assertEq(loanToken.balanceOf(address(moolah)), amount, "Moolah's loan token balance");
     }
 }

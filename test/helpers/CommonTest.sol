@@ -2,41 +2,35 @@
 pragma solidity ^0.8.0;
 
 import {
-    IMorpho,
+    IMoolah,
     Id,
     MarketParams,
-    Authorization as MorphoAuthorization,
-    Signature as MorphoSignature
-} from "../../lib/morpho-blue/src/interfaces/IMorpho.sol";
+    Authorization as MoolahAuthorization,
+    Signature as MoolahSignature
+} from "../../lib/moolah/src/moolah/interfaces/IMoolah.sol";
 
 import {SigUtils} from "./SigUtils.sol";
-import {MarketParamsLib} from "../../lib/morpho-blue/src/libraries/MarketParamsLib.sol";
-import {SharesMathLib} from "../../lib/morpho-blue/src/libraries/SharesMathLib.sol";
-import {MathLib, WAD} from "../../lib/morpho-blue/src/libraries/MathLib.sol";
-import {UtilsLib as MorphoUtilsLib} from "../../lib/morpho-blue/src/libraries/UtilsLib.sol";
-import {MorphoLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoLib.sol";
-import {MorphoBalancesLib} from "../../lib/morpho-blue/src/libraries/periphery/MorphoBalancesLib.sol";
+import {MarketParamsLib} from "../../lib/moolah/src/moolah/libraries/MarketParamsLib.sol";
+import {SharesMathLib} from "../../lib/moolah/src/moolah/libraries/SharesMathLib.sol";
+import {MathLib, WAD} from "../../lib/moolah/src/moolah/libraries/MathLib.sol";
+import {UtilsLib as MoolahUtilsLib} from "../../lib/moolah/src/moolah/libraries/UtilsLib.sol";
+import {MoolahBalancesLib} from "../../lib/moolah/src/moolah/libraries/periphery/MoolahBalancesLib.sol";
 import {
     LIQUIDATION_CURSOR,
     MAX_LIQUIDATION_INCENTIVE_FACTOR,
     ORACLE_PRICE_SCALE
-} from "../../lib/morpho-blue/src/libraries/ConstantsLib.sol";
+} from "../../lib/moolah/src/moolah/libraries/ConstantsLib.sol";
 
-import {IrmMock} from "../../lib/morpho-blue/src/mocks/IrmMock.sol";
-import {OracleMock} from "../../lib/morpho-blue/src/mocks/OracleMock.sol";
-import {IParaswapAdapter, Offsets} from "../../src/interfaces/IParaswapAdapter.sol";
-import {ParaswapAdapter} from "../../src/adapters/ParaswapAdapter.sol";
+import {IrmMock} from "../../lib/moolah/src/moolah/mocks/IrmMock.sol";
+import {OracleMock} from "../../lib/moolah/src/moolah/mocks/OracleMock.sol";
+import {ERC1967Proxy} from "../../lib/openzeppelin-contracts/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IERC20Permit} from "../../lib/openzeppelin-contracts/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {Permit} from "../helpers/SigUtils.sol";
 
 import {CoreAdapter, IERC20, SafeERC20, UtilsLib} from "../../src/adapters/CoreAdapter.sol";
 import {FunctionMocker} from "./FunctionMocker.sol";
 import {GeneralAdapter1} from "../../src/adapters/GeneralAdapter1.sol";
-import {ERC20WrapperAdapter} from "../../src/adapters/ERC20WrapperAdapter.sol";
 import {Bundler3, Call} from "../../src/Bundler3.sol";
-
-import {AugustusRegistryMock} from "../../src/mocks/AugustusRegistryMock.sol";
-import {AugustusMock} from "../../src/mocks/AugustusMock.sol";
 
 import "../../lib/forge-std/src/Test.sol";
 import "../../lib/forge-std/src/console.sol";
@@ -57,18 +51,12 @@ abstract contract CommonTest is Test {
     address internal immutable RECEIVER = makeAddr("Receiver");
     address internal immutable LIQUIDATOR = makeAddr("Liquidator");
 
-    IMorpho internal morpho;
+    IMoolah internal moolah;
     IrmMock internal irm;
     OracleMock internal oracle;
 
     Bundler3 internal bundler3;
     GeneralAdapter1 internal generalAdapter1;
-    ERC20WrapperAdapter internal erc20WrapperAdapter;
-
-    ParaswapAdapter paraswapAdapter;
-
-    AugustusRegistryMock augustusRegistryMock;
-    AugustusMock augustus;
 
     Call[] internal bundle;
     Call[] internal callbackBundle;
@@ -76,31 +64,41 @@ abstract contract CommonTest is Test {
     FunctionMocker internal functionMocker;
 
     function setUp() public virtual {
-        morpho = IMorpho(deployCode("Morpho.sol", abi.encode(OWNER)));
-        vm.label(address(morpho), "Morpho");
+        uint256 MIN_LOAN_VALUE = 15 * 1e8;
 
-        augustusRegistryMock = new AugustusRegistryMock();
+        // Deploy Moolah implementation
+        address impl = deployCode("Moolah.sol");
+        vm.label(impl, "Moolah Impl");
+
+        // Deploy Moolah proxy
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            impl,
+            abi.encodeWithSelector(
+                bytes4(keccak256("initialize(address,address,address,uint256)")), OWNER, OWNER, OWNER, MIN_LOAN_VALUE
+            )
+        );
+        vm.label(address(proxy), "Moolah Proxy");
+
+        moolah = IMoolah(address(proxy));
+
         functionMocker = new FunctionMocker();
 
         bundler3 = new Bundler3();
-        generalAdapter1 = new GeneralAdapter1(address(bundler3), address(morpho), address(1));
-        erc20WrapperAdapter = new ERC20WrapperAdapter(address(bundler3));
-        paraswapAdapter = new ParaswapAdapter(address(bundler3), address(morpho), address(augustusRegistryMock));
+        generalAdapter1 = new GeneralAdapter1(address(bundler3), address(moolah), address(1));
 
         irm = new IrmMock();
 
         vm.startPrank(OWNER);
-        morpho.enableIrm(address(irm));
-        morpho.enableIrm(address(0));
-        morpho.enableLltv(0);
+        moolah.enableIrm(address(irm));
+        moolah.enableIrm(address(0));
+        moolah.enableLltv(0);
         vm.stopPrank();
 
         oracle = new OracleMock();
-        oracle.setPrice(ORACLE_PRICE_SCALE);
 
         vm.prank(USER);
         // So tests can borrow/withdraw on behalf of USER without pranking it.
-        morpho.setAuthorization(address(this), true);
+        moolah.setAuthorization(address(this), true);
     }
 
     function emptyMarketParams() internal pure returns (MarketParams memory _emptyMarketParams) {}
@@ -117,18 +115,18 @@ abstract contract CommonTest is Test {
     function _supplyCollateral(MarketParams memory _marketParams, uint256 amount, address onBehalf) internal {
         deal(_marketParams.collateralToken, onBehalf, amount, true);
         vm.prank(onBehalf);
-        morpho.supplyCollateral(_marketParams, amount, onBehalf, hex"");
+        moolah.supplyCollateral(_marketParams, amount, onBehalf, hex"");
     }
 
     function _supply(MarketParams memory _marketParams, uint256 amount, address onBehalf) internal {
         deal(_marketParams.loanToken, onBehalf, amount, true);
         vm.prank(onBehalf);
-        morpho.supply(_marketParams, amount, 0, onBehalf, hex"");
+        moolah.supply(_marketParams, amount, 0, onBehalf, hex"");
     }
 
     function _borrow(MarketParams memory _marketParams, uint256 amount, address onBehalf) internal {
         vm.prank(onBehalf);
-        morpho.borrow(_marketParams, amount, 0, onBehalf, onBehalf);
+        moolah.borrow(_marketParams, amount, 0, onBehalf, onBehalf);
     }
 
     function _delegatePrank(address to, bytes memory callData) internal {
@@ -246,22 +244,6 @@ abstract contract CommonTest is Test {
         return _erc20TransferFrom(token, address(generalAdapter1), amount);
     }
 
-    /* ERC20 WRAPPER ACTIONS */
-
-    function _erc20WrapperDepositFor(address token, uint256 amount) internal view returns (Call memory) {
-        return _call(erc20WrapperAdapter, abi.encodeCall(ERC20WrapperAdapter.erc20WrapperDepositFor, (token, amount)));
-    }
-
-    function _erc20WrapperWithdrawTo(address token, address receiver, uint256 amount)
-        internal
-        view
-        returns (Call memory)
-    {
-        return _call(
-            erc20WrapperAdapter, abi.encodeCall(ERC20WrapperAdapter.erc20WrapperWithdrawTo, (token, receiver, amount))
-        );
-    }
-
     /* ERC4626 ACTIONS */
 
     function _erc4626Mint(address vault, uint256 shares, uint256 maxSharePriceE27, address receiver)
@@ -306,16 +288,16 @@ abstract contract CommonTest is Test {
         );
     }
 
-    /* MORPHO ACTIONS */
+    /* MOOLAH ACTIONS */
 
-    function _morphoSetAuthorizationWithSig(uint256 privateKey, bool isAuthorized, uint256 nonce, bool skipRevert)
+    function _moolahSetAuthorizationWithSig(uint256 privateKey, bool isAuthorized, uint256 nonce, bool skipRevert)
         internal
         view
         returns (Call memory)
     {
         address user = vm.addr(privateKey);
 
-        MorphoAuthorization memory authorization = MorphoAuthorization({
+        MoolahAuthorization memory authorization = MoolahAuthorization({
             authorizer: user,
             authorized: address(generalAdapter1),
             isAuthorized: isAuthorized,
@@ -323,17 +305,17 @@ abstract contract CommonTest is Test {
             deadline: SIGNATURE_DEADLINE
         });
 
-        bytes32 digest = SigUtils.toTypedDataHash(morpho.DOMAIN_SEPARATOR(), authorization);
+        bytes32 digest = SigUtils.toTypedDataHash(moolah.DOMAIN_SEPARATOR(), authorization);
 
-        MorphoSignature memory signature;
+        MoolahSignature memory signature;
         (signature.v, signature.r, signature.s) = vm.sign(privateKey, digest);
 
         return _call(
-            address(morpho), abi.encodeCall(morpho.setAuthorizationWithSig, (authorization, signature)), 0, skipRevert
+            address(moolah), abi.encodeCall(moolah.setAuthorizationWithSig, (authorization, signature)), 0, skipRevert
         );
     }
 
-    function _morphoSupply(
+    function _moolahSupply(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 shares,
@@ -344,23 +326,23 @@ abstract contract CommonTest is Test {
         return _call(
             generalAdapter1,
             abi.encodeCall(
-                GeneralAdapter1.morphoSupply, (marketParams, assets, shares, maxSharePriceE27, onBehalf, data)
+                GeneralAdapter1.moolahSupply, (marketParams, assets, shares, maxSharePriceE27, onBehalf, data)
             ),
             data.length == 0 ? bytes32(0) : keccak256(data)
         );
     }
 
-    function _morphoSupply(
+    function _moolahSupply(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 shares,
         uint256 slippageAmount,
         address onBehalf
     ) internal view returns (Call memory) {
-        return _morphoSupply(marketParams, assets, shares, slippageAmount, onBehalf, abi.encode(callbackBundle));
+        return _moolahSupply(marketParams, assets, shares, slippageAmount, onBehalf, abi.encode(callbackBundle));
     }
 
-    function _morphoBorrow(
+    function _moolahBorrow(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 shares,
@@ -369,11 +351,11 @@ abstract contract CommonTest is Test {
     ) internal view returns (Call memory) {
         return _call(
             generalAdapter1,
-            abi.encodeCall(GeneralAdapter1.morphoBorrow, (marketParams, assets, shares, minSharePriceE27, receiver))
+            abi.encodeCall(GeneralAdapter1.moolahBorrow, (marketParams, assets, shares, minSharePriceE27, receiver))
         );
     }
 
-    function _morphoWithdraw(
+    function _moolahWithdraw(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 shares,
@@ -382,11 +364,11 @@ abstract contract CommonTest is Test {
     ) internal view returns (Call memory) {
         return _call(
             generalAdapter1,
-            abi.encodeCall(GeneralAdapter1.morphoWithdraw, (marketParams, assets, shares, slippageAmount, receiver))
+            abi.encodeCall(GeneralAdapter1.moolahWithdraw, (marketParams, assets, shares, slippageAmount, receiver))
         );
     }
 
-    function _morphoRepay(
+    function _moolahRepay(
         MarketParams memory marketParams,
         uint256 assets,
         uint256 shares,
@@ -397,13 +379,13 @@ abstract contract CommonTest is Test {
         return _call(
             generalAdapter1,
             abi.encodeCall(
-                GeneralAdapter1.morphoRepay, (marketParams, assets, shares, maxSharePriceE27, onBehalf, data)
+                GeneralAdapter1.moolahRepay, (marketParams, assets, shares, maxSharePriceE27, onBehalf, data)
             ),
             data.length == 0 ? bytes32(0) : keccak256(data)
         );
     }
 
-    function _morphoSupplyCollateral(
+    function _moolahSupplyCollateral(
         MarketParams memory marketParams,
         uint256 assets,
         address onBehalf,
@@ -411,104 +393,26 @@ abstract contract CommonTest is Test {
     ) internal view returns (Call memory) {
         return _call(
             generalAdapter1,
-            abi.encodeCall(GeneralAdapter1.morphoSupplyCollateral, (marketParams, assets, onBehalf, data)),
+            abi.encodeCall(GeneralAdapter1.moolahSupplyCollateral, (marketParams, assets, onBehalf, data)),
             data.length == 0 ? bytes32(0) : keccak256(data)
         );
     }
 
-    function _morphoWithdrawCollateral(MarketParams memory marketParams, uint256 assets, address receiver)
+    function _moolahWithdrawCollateral(MarketParams memory marketParams, uint256 assets, address receiver)
         internal
         view
         returns (Call memory)
     {
         return _call(
-            generalAdapter1, abi.encodeCall(GeneralAdapter1.morphoWithdrawCollateral, (marketParams, assets, receiver))
+            generalAdapter1, abi.encodeCall(GeneralAdapter1.moolahWithdrawCollateral, (marketParams, assets, receiver))
         );
     }
 
-    function _morphoFlashLoan(address token, uint256 amount, bytes memory data) internal view returns (Call memory) {
+    function _moolahFlashLoan(address token, uint256 amount, bytes memory data) internal view returns (Call memory) {
         return _call(
             generalAdapter1,
-            abi.encodeCall(GeneralAdapter1.morphoFlashLoan, (token, amount, data)),
+            abi.encodeCall(GeneralAdapter1.moolahFlashLoan, (token, amount, data)),
             data.length == 0 ? bytes32(0) : keccak256(data)
-        );
-    }
-
-    /* PARASWAP ADAPTER ACTIONS */
-
-    function _paraswapSell(
-        address _augustus,
-        bytes memory callData,
-        address srcToken,
-        address destToken,
-        bool sellEntireBalance,
-        Offsets memory offsets,
-        address receiver
-    ) internal pure returns (bytes memory) {
-        return abi.encodeCall(
-            IParaswapAdapter.sell, (_augustus, callData, srcToken, destToken, sellEntireBalance, offsets, receiver)
-        );
-    }
-
-    function _paraswapBuy(
-        address _augustus,
-        bytes memory callData,
-        address srcToken,
-        address destToken,
-        uint256 newDestAmount,
-        Offsets memory offsets,
-        address receiver
-    ) internal pure returns (bytes memory) {
-        return abi.encodeCall(
-            IParaswapAdapter.buy, (_augustus, callData, srcToken, destToken, newDestAmount, offsets, receiver)
-        );
-    }
-
-    function _sell(
-        address srcToken,
-        address destToken,
-        uint256 srcAmount,
-        uint256 minDestAmount,
-        bool sellEntireBalance,
-        address receiver
-    ) internal view returns (Call memory) {
-        uint256 fromAmountOffset = 4 + 32 + 32;
-        uint256 toAmountOffset = fromAmountOffset + 32;
-        return _call(
-            address(paraswapAdapter),
-            _paraswapSell(
-                address(augustus),
-                abi.encodeCall(augustus.mockSell, (srcToken, destToken, srcAmount, minDestAmount)),
-                srcToken,
-                destToken,
-                sellEntireBalance,
-                Offsets({exactAmount: fromAmountOffset, limitAmount: toAmountOffset, quotedAmount: 0}),
-                receiver
-            )
-        );
-    }
-
-    function _buy(
-        address srcToken,
-        address destToken,
-        uint256 maxSrcAmount,
-        uint256 destAmount,
-        uint256 newDestAmount,
-        address receiver
-    ) internal view returns (Call memory) {
-        uint256 fromAmountOffset = 4 + 32 + 32;
-        uint256 toAmountOffset = fromAmountOffset + 32;
-        return _call(
-            address(paraswapAdapter),
-            _paraswapBuy(
-                address(augustus),
-                abi.encodeCall(augustus.mockBuy, (srcToken, destToken, maxSrcAmount, destAmount)),
-                srcToken,
-                destToken,
-                newDestAmount,
-                Offsets({exactAmount: toAmountOffset, limitAmount: fromAmountOffset, quotedAmount: 0}),
-                receiver
-            )
         );
     }
 

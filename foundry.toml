@@ -17,8 +17,7 @@ evm_version = "cancun"
 runs = 64
 
 [profile.default.rpc_endpoints]
-ethereum = "https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
-base = "https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
+bsc = "https://bnb-mainnet.g.alchemy.com/v2/${ALCHEMY_KEY}"
 tenderly = "https://rpc.tenderly.co/fork/${TENDERLY_FORK_ID}"
 
 [profile.default.fmt]

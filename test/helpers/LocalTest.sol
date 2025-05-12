@@ -30,16 +30,18 @@ abstract contract LocalTest is CommonTest {
         marketParams = MarketParams(address(loanToken), address(collateralToken), address(oracle), address(irm), LLTV);
         id = marketParams.id();
 
-        loanToken.approve(address(morpho), type(uint256).max);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        loanToken.approve(address(moolah), type(uint256).max);
+        collateralToken.approve(address(moolah), type(uint256).max);
 
         vm.startPrank(OWNER);
-        morpho.enableLltv(LLTV);
-        morpho.createMarket(marketParams);
+        moolah.enableLltv(LLTV);
+        oracle.setPrice(address(loanToken), ORACLE_PRICE_SCALE);
+        oracle.setPrice(address(collateralToken), ORACLE_PRICE_SCALE);
+        moolah.createMarket(marketParams);
 
         vm.startPrank(SUPPLIER);
-        loanToken.approve(address(morpho), type(uint256).max);
-        collateralToken.approve(address(morpho), type(uint256).max);
+        loanToken.approve(address(moolah), type(uint256).max);
+        collateralToken.approve(address(moolah), type(uint256).max);
         vm.stopPrank();
     }
 }

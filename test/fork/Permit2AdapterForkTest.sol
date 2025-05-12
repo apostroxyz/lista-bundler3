@@ -11,8 +11,7 @@ error InvalidNonce();
 contract Permit2AdapterForkTest is ForkTest {
     using SafeERC20 for IERC20;
     using MarketParamsLib for MarketParams;
-    using MorphoBalancesLib for IMorpho;
-    using MorphoLib for IMorpho;
+    using MoolahBalancesLib for IMoolah;
 
     address internal immutable DAI = getAddress("DAI");
 
@@ -21,7 +20,7 @@ contract Permit2AdapterForkTest is ForkTest {
         address user = vm.addr(privateKey);
 
         vm.assume(onBehalf != address(0));
-        vm.assume(onBehalf != address(morpho));
+        vm.assume(onBehalf != address(moolah));
         vm.assume(onBehalf != address(generalAdapter1));
 
         amount = bound(amount, MIN_AMOUNT, MAX_AMOUNT);
@@ -32,7 +31,7 @@ contract Permit2AdapterForkTest is ForkTest {
 
         bundle.push(_approve2(privateKey, marketParams.loanToken, amount, 0, false));
         bundle.push(_permit2TransferFrom(marketParams.loanToken, amount));
-        bundle.push(_morphoSupply(marketParams, amount, 0, type(uint256).max, onBehalf, hex""));
+        bundle.push(_moolahSupply(marketParams, amount, 0, type(uint256).max, onBehalf, hex""));
 
         uint256 collateralBalanceBefore = IERC20(marketParams.collateralToken).balanceOf(onBehalf);
         uint256 loanBalanceBefore = IERC20(marketParams.loanToken).balanceOf(onBehalf);
@@ -58,14 +57,16 @@ contract Permit2AdapterForkTest is ForkTest {
 
         Id id = marketParams.id();
 
-        assertEq(morpho.collateral(id, onBehalf), 0, "collateral(onBehalf)");
-        assertEq(morpho.supplyShares(id, onBehalf), amount * SharesMathLib.VIRTUAL_SHARES, "supplyShares(onBehalf)");
-        assertEq(morpho.borrowShares(id, onBehalf), 0, "borrowShares(onBehalf)");
+        assertEq(moolah.position(id, onBehalf).collateral, 0, "collateral(onBehalf)");
+        assertEq(
+            moolah.position(id, onBehalf).supplyShares, amount * SharesMathLib.VIRTUAL_SHARES, "supplyShares(onBehalf)"
+        );
+        assertEq(moolah.position(id, onBehalf).borrowShares, 0, "borrowShares(onBehalf)");
 
         if (onBehalf != user) {
-            assertEq(morpho.collateral(id, user), 0, "collateral(user)");
-            assertEq(morpho.supplyShares(id, user), 0, "supplyShares(user)");
-            assertEq(morpho.borrowShares(id, user), 0, "borrowShares(user)");
+            assertEq(moolah.position(id, user).collateral, 0, "collateral(user)");
+            assertEq(moolah.position(id, user).supplyShares, 0, "supplyShares(user)");
+            assertEq(moolah.position(id, user).borrowShares, 0, "borrowShares(user)");
         }
     }
 
