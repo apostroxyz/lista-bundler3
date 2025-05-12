@@ -7,6 +7,6 @@
 [submodule "lib/openzeppelin-contracts"]
 	path = lib/openzeppelin-contracts
 	url = https://github.com/openzeppelin/openzeppelin-contracts
-[submodule "lib/morpho-blue"]
-	path = lib/morpho-blue
-	url = https://github.com/morpho-org/morpho-blue
+[submodule "lib/moolah"]
+	path = lib/moolah
+	url = https://github.com/lista-dao/moolah
